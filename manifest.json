@@ -1,4 +1,5 @@
 {
+  "id": "office-restroom-protocol",
   "name": "The Office: Restroom Protocol",
   "short_name": "UrinalGame",
   "description": "Master the unwritten rules of the restroom in this humorous puzzle game. Choose the correct spot to maintain maximum social distance and avoid awkward encounters. Training provided by the assistant to the regional manager.",
@@ -24,3 +25,4 @@
     }
   ]
 }
+
