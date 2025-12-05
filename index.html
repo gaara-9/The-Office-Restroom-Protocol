@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1e293b">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <script>
+       if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+       }
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Office: Restroom Protocol</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;700;900&display=swap');
+        
+        :root {
+            --wall-color: #f3f4f6; /* Generic Office Beige/Grey */
+            --grout-color: #d1d5db;
+            --floor-color: #374151; /* Dark Grey Carpet/Tile */
+            --floor-grout: #1f2937;
+            --dm-blue: #1e3a8a; /* Dunder Mifflin Blue */
+            --dwight-mustard: #eab308;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+            overflow: hidden;
+        }
+
+        /* --- Splash Screen --- */
+        #splash-screen {
+            position: fixed;
+            inset: 0;
+            background: #fff;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.8s ease-out;
+            border: 20px solid #111827; /* Letterbox feel */
+        }
+
+        .splash-hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .dm-logo-text {
+            font-family: 'Courier Prime', monospace;
+            font-weight: 700;
+            color: #000;
+            text-transform: uppercase;
+            letter-spacing: -2px;
+            margin-bottom: 1rem;
+        }
+
+        .loading-bar-container {
+            width: 250px;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 0;
+            margin-top: 40px;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid #9ca3af;
+        }
+
+        .loading-bar {
+            height: 100%;
+            background: #000;
+            width: 0%;
+            animation: loadProgress 4s linear forwards;
+        }
+
+        @keyframes loadProgress {
+            0% { width: 0%; }
+            20% { width: 10%; } /* Stutter like office internet */
+            40% { width: 40%; }
+            60% { width: 45%; }
+            100% { width: 100%; }
+        }
+
+        /* --- 3D Room Environment --- */
+        .scene-container {
+            perspective: 1000px;
+            overflow: hidden;
+            border-radius: 0.25rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            border: 4px solid #374151; /* Thick office frame */
+        }
+
+        .bathroom-wall {
+            position: relative;
+            background-color: var(--wall-color);
+            /* Institutional Tile */
+            background-image: 
+                linear-gradient(#e5e7eb 1px, transparent 1px),
+                linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
+            background-size: 40px 40px;
+            box-shadow: inset 0 20px 40px -10px rgba(0,0,0,0.1);
+            padding-bottom: 0;
+            z-index: 1;
+        }
+
+        .bathroom-floor {
+            height: 100px;
+            background-color: var(--floor-color);
+            /* Industrial Speckled Floor */
+            background-image: radial-gradient(#4b5563 15%, transparent 16%), radial-gradient(#4b5563 15%, transparent 16%);
+            background-size: 10px 10px;
+            background-position: 0 0, 5px 5px;
+            transform-origin: top;
+            transform: rotateX(25deg) scaleY(1.5);
+            margin-top: -10px;
+            position: relative;
+            z-index: 0;
+            box-shadow: inset 0 10px 20px rgba(0,0,0,0.5);
+            border-top: 4px solid #1f2937; /* Baseboard */
+        }
+
+        .urinal-container {
+            display: flex;
+            justify-content: center;
+            padding-top: 60px;
+            padding-bottom: 30px;
+            position: relative;
+            z-index: 10;
+        }
+        
+        .urinal-slot {
+            width: 13%; 
+            max-width: 110px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            transform-style: preserve-3d; 
+        }
+
+        /* Dividers - Grey laminate style */
+        .urinal-slot:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            right: -2px;
+            top: 10px;
+            bottom: -20px;
+            width: 6px;
+            background: #9ca3af;
+            border-left: 1px solid #d1d5db;
+            border-radius: 4px 4px 0 0;
+            height: 140px;
+            z-index: 5;
+            box-shadow: 2px 4px 6px rgba(0,0,0,0.2);
+        }
+
+        .urinal-button {
+            height: 120px;
+            width: 100%;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 10px;
+            z-index: 20;
+        }
+
+        .urinal-button:hover:not(:disabled) {
+            transform: translateY(-5px) scale(1.05);
+            filter: brightness(1.05);
+        }
+
+        .urinal-svg {
+            width: 70px;
+            height: 100px;
+            filter: drop-shadow(0 8px 6px rgba(0,0,0,0.25)); 
+            transition: all 0.2s;
+        }
+
+        /* Interaction States */
+        /* Chosen: Blue selection */
+        .urinal-button.chosen .urinal-svg { filter: drop-shadow(0 0 8px rgba(30, 58, 138, 0.6)); }
+        .urinal-button.chosen .urinal-svg path.ceramic { stroke: #1e3a8a; stroke-width: 2; }
+        
+        /* Correct: Green (Schrute Approval) */
+        .urinal-button.correct .urinal-svg { filter: drop-shadow(0 0 10px rgba(22, 163, 74, 0.8)); }
+        .urinal-button.correct .urinal-svg path.ceramic { stroke: #16a34a; stroke-width: 2; }
+
+        /* Incorrect: Red (Toby) */
+        .urinal-button.incorrect .urinal-svg { filter: drop-shadow(0 0 10px rgba(220, 38, 38, 0.8)); }
+        .urinal-button.incorrect .urinal-svg path.ceramic { stroke: #dc2626; stroke-width: 2; }
+
+        .urinal-button.occupied { cursor: default; filter: brightness(0.9); }
+        
+        .figure-container {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 30;
+            pointer-events: none;
+            width: 80px;
+            height: 160px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+        }
+        
+        .person-svg {
+            height: 150px;
+            filter: drop-shadow(0 4px 4px rgba(0,0,0,0.5));
+        }
+        
+        .figure-shadow {
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 15px;
+            background: radial-gradient(ellipse at center, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 70%);
+            z-index: 25;
+            pointer-events: none;
+        }
+
+        .feedback-badge {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%) scale(0) rotate(-15deg);
+            width: 60px;
+            height: 60px; /* Bigger badges for effect */
+            z-index: 40;
+            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));
+        }
+
+        .feedback-badge.visible { transform: translateX(-50%) scale(1) rotate(0deg); }
+
+        .label-text {
+            font-size: 0.75rem;
+            color: #4b5563;
+            margin-top: 4px;
+            font-family: 'Courier Prime', monospace;
+            font-weight: 700;
+            background: #fff;
+            border: 1px solid #d1d5db;
+            padding: 2px 6px;
+            margin-bottom: -20px;
+            z-index: 20;
+            position: relative;
+            box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        
+        #wait-container { z-index: 50; }
+        
+        #wait-button {
+            background: #1f2937; /* Dark Suit Color */
+            color: white;
+            border: 2px solid #eab308; /* Mustard border */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+            font-family: 'Courier Prime', monospace;
+        }
+        #wait-button:hover {
+            transform: translateY(-2px);
+            background: #111827;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+        }
+        
+        #game-container.hidden-start { display: none; }
+        
+        /* Sticky Note Style for messages */
+        .sticky-note {
+            background-color: #fef3c7; /* Post-it yellow */
+            border-bottom: 2px solid #d1d5db;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+            color: #000;
+            font-family: 'Courier Prime', monospace;
+            transform: rotate(-1deg);
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 min-h-screen flex items-center justify-center">
+
+    <!-- SPLASH SCREEN -->
+    <div id="splash-screen">
+        <h1 class="text-5xl md:text-7xl font-black text-black tracking-tighter mb-2">
+            DUNDER<br><span class="text-gray-500">MIFFLIN</span>
+        </h1>
+        <div class="text-sm font-bold uppercase tracking-widest border-t-2 border-b-2 border-black py-1 px-4">
+            Paper Company, Inc.
+        </div>
+        
+        <div class="mt-8 text-center">
+            <h2 class="text-xl font-bold font-mono">HR TRAINING MODULE:</h2>
+            <p class="text-lg text-gray-700 italic">"Restroom Protocol"</p>
+        </div>
+        
+        <div class="loading-bar-container">
+            <div class="loading-bar"></div>
+        </div>
+        <p class="text-xs text-gray-400 mt-2 font-mono">Loading Dwight's Instructions...</p>
+    </div>
+
+    <!-- MAIN GAME CONTAINER -->
+    <div id="game-container" class="w-full max-w-5xl bg-white rounded-sm shadow-2xl overflow-hidden border border-gray-800 hidden-start">
+        
+        <!-- Header -->
+        <div class="bg-gray-100 p-5 border-b-4 border-gray-800 flex justify-between items-center shadow-sm z-20 relative">
+            <div class="flex items-center gap-4">
+                <div class="bg-white p-2 border-2 border-black">
+                    <!-- Stapler in Jello / Mug Icon placeholder -> Using custom SVG -->
+                    <svg viewBox="0 0 100 100" class="w-8 h-8">
+                        <!-- Simple Mug -->
+                        <path d="M20,20 L20,80 L70,80 L70,20 Z" fill="#fff" stroke="#000" stroke-width="3"/>
+                        <path d="M70,30 L85,30 L85,60 L70,60" fill="none" stroke="#000" stroke-width="3"/>
+                        <text x="25" y="55" font-family="Arial" font-weight="bold" font-size="20">WORLD'S</text>
+                        <text x="25" y="70" font-family="Arial" font-weight="bold" font-size="20">BEST BOSS</text>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-2xl md:text-3xl font-bold font-mono text-gray-900 tracking-tighter">RESTROOM PROTOCOL</h1>
+                    <p class="text-gray-600 text-xs font-medium uppercase tracking-wider">Scranton Branch</p>
+                </div>
+            </div>
+            
+            <button id="sound-toggle" onclick="SoundManager.toggleMute()" class="p-3 rounded-full hover:bg-gray-200 transition-all text-xl border border-gray-300" title="Toggle Sound">
+                <span id="sound-icon">🔊</span>
+            </button>
+        </div>
+
+        <!-- Scoreboard -->
+        <div class="flex justify-between items-center bg-white p-4 border-b border-gray-200 z-10 relative">
+            <div class="flex items-center gap-2">
+                <div class="text-xs font-bold text-gray-500 uppercase font-mono">Round</div>
+                <div class="text-2xl font-black text-gray-800"><span id="round-display" class="text-blue-800">1</span>/5</div>
+            </div>
+            <div class="flex items-center gap-2">
+                <div class="text-xs font-bold text-gray-500 uppercase font-mono">Schrute Bucks</div>
+                <div class="text-2xl font-black text-gray-800"><span id="score-display" class="text-green-700">0</span></div>
+            </div>
+        </div>
+
+        <!-- 3D Scene -->
+        <div class="scene-container">
+            <div class="bathroom-wall">
+                <div id="urinal-board" class="urinal-container"></div>
+                <div id="wait-container" class="absolute bottom-6 left-0 right-0 flex justify-center pointer-events-none">
+                     <button id="wait-button" onclick="handleWait()" class="hidden pointer-events-auto font-bold py-3 px-8 rounded shadow-lg flex items-center gap-2 text-lg">
+                        <span class="text-2xl">🛑</span> WAIT FOR STALL
+                     </button>
+                </div>
+            </div>
+            <div class="bathroom-floor"></div>
+        </div>
+
+        <!-- Controls -->
+        <div class="p-6 bg-gray-50 z-20 relative border-t border-gray-300">
+            <div id="message-box" class="sticky-note min-h-[4.5rem] p-4 text-center mb-6 flex items-center justify-center">
+                <p id="game-message" class="text-lg font-bold text-gray-800">Choose a spot. Do not be weird.</p>
+            </div>
+
+            <button id="action-button" onclick="handleActionButton()" class="w-full py-4 px-6 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xl rounded shadow-md hover:shadow-lg transition-all transform active:scale-[0.98] font-mono border-2 border-blue-950">
+                START TRAINING
+            </button>
+        </div>
+
+    </div>
+
+<script>
+    // --- Sound Manager ---
+    const SoundManager = {
+        ctx: null,
+        muted: false,
+        init: function() {
+            if (!this.ctx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioContext();
+            }
+            if (this.ctx.state === 'suspended') {
+                this.ctx.resume();
+            }
+        },
+        toggleMute: function() {
+            this.muted = !this.muted;
+            document.getElementById('sound-icon').textContent = this.muted ? '🔇' : '🔊';
+            this.init();
+        },
+        playTone: function(freq, type, duration, delay = 0, vol = 0.1) {
+            if (this.muted || !this.ctx) return;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, this.ctx.currentTime + delay);
+            gain.gain.setValueAtTime(0, this.ctx.currentTime + delay);
+            gain.gain.linearRampToValueAtTime(vol, this.ctx.currentTime + delay + 0.05);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + delay + duration);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(this.ctx.currentTime + delay);
+            osc.stop(this.ctx.currentTime + delay + duration);
+        },
+        playClick: function() { this.init(); this.playTone(300, 'square', 0.05, 0, 0.05); }, // Keyboard clack style
+        playSuccess: function() { this.init(); this.playTone(600, 'sine', 0.1, 0); this.playTone(800, 'sine', 0.3, 0.1); }, // Ding
+        playError: function() { this.init(); this.playTone(100, 'sawtooth', 0.4, 0, 0.1); }, // Buzzer
+        playWaitAppear: function() { this.init(); this.playTone(400, 'sine', 0.1, 0, 0.05); this.playTone(400, 'sine', 0.1, 0.15, 0.05); },
+        playWin: function() { 
+            this.init(); 
+            // Simple major chord fanfare
+            [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+                this.playTone(freq, 'triangle', 0.4, i*0.1, 0.1);
+            });
+        },
+        playLose: function() { 
+            this.init(); 
+            // Sad trombone
+            this.playTone(400, 'sawtooth', 0.4, 0, 0.1); 
+            this.playTone(380, 'sawtooth', 0.4, 0.3, 0.1); 
+            this.playTone(350, 'sawtooth', 0.8, 0.6, 0.1); 
+        }
+    };
+
+    // --- Game Configuration and State ---
+    const NUM_URINALS = 7;
+    const MAX_ROUNDS = 5;
+    let currentRound = 0;
+    let score = 0;
+    let roundState = 'start'; 
+    let selectedUrinals = []; 
+    let currentScenario = []; 
+    let waitButtonTimeout = null;
+
+    // --- QUOTES & MESSAGES (The Office Themed) ---
+    const MSG_WIN = [
+        "FACT: You chose correctly.",
+        "Michael Scott is proud of you.",
+        "You are the Assistant to the Regional Manager of etiquette.",
+        "Excellent. Bears. Beets. Battlestar Galactica.",
+        "Stanley gives you a subtle nod."
+    ];
+    
+    const MSG_LOSE = [
+        "FALSE. Identity theft is not a joke!",
+        "Why are you the way that you are?",
+        "That was an HR violation. Toby is writing it up.",
+        "I hate so much about the things that you choose to be.",
+        "Ryan started the fire, and you started an awkward situation."
+    ];
+
+    const MSG_WAIT_CORRECT = [
+        "Smart. Pretend you're on a sales call.",
+        "Good call. Just go to the break room.",
+        "Avoid eye contact. Establish dominance by leaving."
+    ];
+
+    const MSG_WAIT_WRONG = [
+        "You hesitated. Weakness!",
+        "Dwight would have taken the corner spot instantly.",
+        "Don't be a Toby. Take the open spot."
+    ];
+
+    function getRandomMsg(arr) {
+        return arr[Math.floor(Math.random() * arr.length)];
+    }
+
+    // --- ASSETS ---
+    const urinalDefs = `
+        <defs>
+            <linearGradient id="porcelain-body" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" style="stop-color:#e5e7eb;stop-opacity:1" />
+                <stop offset="20%" style="stop-color:#ffffff;stop-opacity:1" />
+                <stop offset="50%" style="stop-color:#ffffff;stop-opacity:1" />
+                <stop offset="80%" style="stop-color:#ffffff;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#e5e7eb;stop-opacity:1" />
+            </linearGradient>
+            <linearGradient id="metal-flush" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:#9ca3af;stop-opacity:1" />
+                <stop offset="50%" style="stop-color:#f3f4f6;stop-opacity:1" />
+                <stop offset="100%" style="stop-color:#4b5563;stop-opacity:1" />
+            </linearGradient>
+        </defs>
+    `;
+
+    const urinalSVG = `
+        <svg viewBox="0 0 100 140" class="urinal-svg">
+            ${urinalDefs}
+            <path class="ceramic" d="M15,10 L15,90 Q15,130 50,130 Q85,130 85,90 L85,10 Q85,0 50,0 Q15,0 15,10 Z" 
+                  fill="url(#porcelain-body)" stroke="#6b7280" stroke-width="1"/>
+            <path d="M25,20 L25,85 Q25,115 50,115 Q75,115 75,85 L75,20 Q75,10 50,10 Q25,10 25,20 Z" 
+                  fill="#f3f4f6" stroke="#d1d5db" stroke-width="1" opacity="0.8"/>
+            <circle cx="50" cy="95" r="5" fill="#374151"/>
+            <rect x="35" y="8" width="30" height="12" rx="2" fill="url(#metal-flush)" stroke="#4b5563" stroke-width="0.5"/>
+        </svg>
+    `;
+
+    // Person: Dwight Style (Mustard Shirt, Tie)
+    const personSVG = `
+        <svg viewBox="0 0 100 200" class="person-svg">
+            <!-- Legs (Dark Pants) -->
+            <path d="M30,140 L30,200 L45,200 L45,150 L55,150 L55,200 L70,200 L70,140 Z" fill="#374151"/>
+            <!-- Body (Mustard Shirt) -->
+            <path d="M20,60 L80,60 L80,140 L20,140 Z" fill="#eab308" stroke="#000" stroke-width="1"/>
+            <!-- Short Sleeves -->
+            <path d="M20,60 L10,80 L20,90 L20,60" fill="#eab308" stroke="#000" stroke-width="1"/>
+            <path d="M80,60 L90,80 L80,90 L80,60" fill="#eab308" stroke="#000" stroke-width="1"/>
+            <!-- Tie (Brown) -->
+            <path d="M50,60 L45,120 L50,130 L55,120 L50,60" fill="#451a03"/>
+            <!-- Head -->
+            <circle cx="50" cy="35" r="22" fill="#fca5a5" stroke="#000" stroke-width="1"/>
+            <!-- Hair (Center Part) -->
+            <path d="M28,30 Q50,10 72,30 Q75,20 65,15 Q50,5 35,15 Q25,20 28,30" fill="#4b5563"/>
+            <!-- Glasses -->
+            <rect x="38" y="30" width="10" height="6" fill="none" stroke="#000" stroke-width="1"/>
+            <rect x="52" y="30" width="10" height="6" fill="none" stroke="#000" stroke-width="1"/>
+            <line x1="48" y1="33" x2="52" y2="33" stroke="#000" stroke-width="1"/>
+        </svg>
+    `;
+
+    const checkBadgeSVG = `
+        <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-xl">
+            <!-- Schrute Buck / Good Job Sticker look -->
+            <circle cx="50" cy="50" r="45" fill="#fef08a" stroke="#ca8a04" stroke-width="3"/>
+            <text x="50" y="65" font-family="Courier Prime" font-weight="bold" font-size="60" text-anchor="middle" fill="#000">✓</text>
+        </svg>
+    `;
+
+    const crossBadgeSVG = `
+        <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-xl">
+            <!-- Red X / Rejected stamp -->
+            <circle cx="50" cy="50" r="45" fill="#fee2e2" stroke="#dc2626" stroke-width="3"/>
+            <text x="50" y="65" font-family="Courier Prime" font-weight="bold" font-size="50" text-anchor="middle" fill="#dc2626">NO</text>
+        </svg>
+    `;
+
+    // --- DOM Elements ---
+    const board = document.getElementById('urinal-board');
+    const roundDisplay = document.getElementById('round-display');
+    const scoreDisplay = document.getElementById('score-display');
+    const messageBox = document.getElementById('message-box');
+    const gameMessage = document.getElementById('game-message');
+    const actionButton = document.getElementById('action-button');
+    const waitButton = document.getElementById('wait-button');
+    const splashScreen = document.getElementById('splash-screen');
+    const gameContainer = document.getElementById('game-container');
+
+    // --- Utility Functions ---
+
+    function arraysEqual(arr1, arr2) {
+        if (arr1.length !== arr2.length) return false;
+        const sorted1 = [...arr1].sort((a, b) => a - b);
+        const sorted2 = [...arr2].sort((a, b) => a - b);
+        return sorted1.every((val, index) => val === sorted2[index]);
+    }
+    
+    function generateRandomScenario(round) {
+        let minOccupied = 1;
+        let maxOccupied = 1;
+
+        if (round === 1) { minOccupied = 1; maxOccupied = 1; }
+        else if (round === 2) { minOccupied = 2; maxOccupied = 2; }
+        else if (round === 3) { minOccupied = 3; maxOccupied = 3; }
+        else if (round === 4) { minOccupied = 3; maxOccupied = 4; }
+        else if (round === 5) {
+             if (Math.random() < 0.4) return [0, 2, 4, 6];
+             minOccupied = 4; maxOccupied = 5;
+        }
+
+        const numOccupied = Math.floor(Math.random() * (maxOccupied - minOccupied + 1)) + minOccupied;
+        const newScenario = [];
+        while (newScenario.length < numOccupied) {
+            const r = Math.floor(Math.random() * NUM_URINALS);
+            if (!newScenario.includes(r)) newScenario.push(r);
+        }
+        return newScenario.sort((a,b) => a-b);
+    }
+
+    function isWaitScenario(occupied) {
+        let emptySpots = [];
+        for(let i=0; i<NUM_URINALS; i++) {
+            if(!occupied.includes(i)) emptySpots.push(i);
+        }
+        if (emptySpots.length === 0) return true;
+        const allBad = emptySpots.every(index => {
+            if (index === 0 || index === NUM_URINALS - 1) return false;
+            const hasLeft = occupied.includes(index - 1);
+            const hasRight = occupied.includes(index + 1);
+            return hasLeft && hasRight;
+        });
+        return allBad;
+    }
+
+    // --- Game Logic ---
+
+    function getOptimalChoices(occupied) {
+        let candidates = [];
+        for (let i = 0; i < NUM_URINALS; i++) {
+            if (occupied.includes(i)) continue;
+            let minDistance = NUM_URINALS; 
+            let neighbors = 0;
+            for (const o of occupied) {
+                const distance = Math.abs(i - o);
+                minDistance = Math.min(minDistance, distance);
+                if (distance === 1) neighbors++;
+            }
+            candidates.push({ index: i, minDistance, neighbors });
+        }
+
+        if (candidates.length === 0) return [];
+
+        const maxDist = Math.max(...candidates.map(c => c.minDistance));
+        let bestCandidates = candidates.filter(c => c.minDistance === maxDist);
+
+        const minNeighbors = Math.min(...bestCandidates.map(c => c.neighbors));
+        bestCandidates = bestCandidates.filter(c => c.neighbors === minNeighbors);
+        
+        const corners = [0, NUM_URINALS - 1];
+        const hasCorner = bestCandidates.some(c => corners.includes(c.index));
+        
+        if (hasCorner) {
+            bestCandidates = bestCandidates.filter(c => corners.includes(c.index));
+        }
+
+        return bestCandidates.map(c => c.index);
+    }
+
+    function renderBoard(occupied) {
+        board.innerHTML = '';
+        for (let i = 0; i < NUM_URINALS; i++) {
+            const isOccupied = occupied.includes(i);
+            const isSelected = selectedUrinals.includes(i);
+
+            const slot = document.createElement('div');
+            slot.className = `urinal-slot`;
+            
+            slot.innerHTML = `
+                ${isOccupied ? `
+                    <div class="figure-shadow"></div>
+                    <div class="figure-container">${personSVG}</div>
+                ` : ''}
+                <div id="badge-${i}-check" class="feedback-badge">${checkBadgeSVG}</div>
+                <div id="badge-${i}-cross" class="feedback-badge">${crossBadgeSVG}</div>
+                <button
+                    class="urinal-button ${isOccupied ? 'occupied' : ''} ${isSelected ? 'chosen' : ''}"
+                    data-index="${i}"
+                    ${isOccupied || roundState === 'checked' ? 'disabled' : ''}
+                    title="Urinal ${i + 1}"
+                >
+                    ${urinalSVG}
+                </button>
+                <div class="label-text">${i + 1}</div>
+            `;
+            const button = slot.querySelector('.urinal-button');
+            if (!isOccupied && roundState !== 'checked') {
+                button.addEventListener('click', () => handleChoice(i));
+            }
+
+            board.appendChild(slot);
+        }
+    }
+
+    function handleChoice(chosenIndex) {
+        if (roundState !== 'choosing') return;
+        
+        SoundManager.init();
+        SoundManager.playClick();
+
+        waitButton.classList.add('hidden');
+        clearTimeout(waitButtonTimeout);
+
+        const indexInArray = selectedUrinals.indexOf(chosenIndex);
+        const button = board.querySelector(`[data-index="${chosenIndex}"]`);
+
+        if (indexInArray > -1) {
+            selectedUrinals.splice(indexInArray, 1);
+            button.classList.remove('chosen');
+        } else {
+            selectedUrinals.push(chosenIndex);
+            button.classList.add('chosen');
+        }
+
+        updateActionButton();
+    }
+    
+    function handleWait() {
+        if (roundState !== 'choosing') return;
+        
+        const occupied = currentScenario;
+        const shouldWait = isWaitScenario(occupied);
+        
+        roundState = 'checked';
+        actionButton.textContent = "NEXT ROUND";
+        actionButton.disabled = false;
+        
+        board.querySelectorAll('.urinal-button').forEach(btn => btn.disabled = true);
+        waitButton.classList.add('hidden');
+
+        if (shouldWait) {
+            SoundManager.playSuccess();
+            score++;
+            gameMessage.innerHTML = `<span class="text-green-700">✓</span> ${getRandomMsg(MSG_WAIT_CORRECT)}`;
+        } else {
+             SoundManager.playError();
+             gameMessage.innerHTML = `<span class="text-red-600">⚠</span> ${getRandomMsg(MSG_WAIT_WRONG)}`;
+        }
+        scoreDisplay.textContent = score;
+    }
+
+    function updateActionButton() {
+        actionButton.disabled = selectedUrinals.length === 0;
+        if(selectedUrinals.length > 0) {
+             actionButton.textContent = "CHECK SELECTION";
+             actionButton.classList.remove('bg-blue-900', 'hover:bg-blue-800');
+             actionButton.classList.add('bg-green-700', 'hover:bg-green-600');
+        } else {
+             actionButton.textContent = "SELECT A SPOT";
+             actionButton.classList.remove('bg-green-700', 'hover:bg-green-600');
+             actionButton.classList.add('bg-blue-900', 'hover:bg-blue-800');
+        }
+    }
+
+    function checkAnswer() {
+        if (roundState !== 'choosing') return;
+
+        const occupied = currentScenario;
+        const optimalChoices = getOptimalChoices(occupied);
+        const shouldHaveWaited = isWaitScenario(occupied);
+
+        roundState = 'checked';
+        actionButton.textContent = "NEXT ROUND";
+        actionButton.classList.remove('bg-green-700', 'hover:bg-green-600');
+        actionButton.classList.add('bg-blue-900', 'hover:bg-blue-800');
+        
+        board.querySelectorAll('.urinal-button').forEach(btn => btn.disabled = true);
+        waitButton.classList.add('hidden'); 
+
+        const isCorrect = arraysEqual(selectedUrinals, optimalChoices);
+
+        for (let i = 0; i < NUM_URINALS; i++) {
+            const button = board.querySelector(`[data-index="${i}"]`);
+            const checkBadge = document.getElementById(`badge-${i}-check`);
+            const crossBadge = document.getElementById(`badge-${i}-cross`);
+
+            if (button && !button.classList.contains('occupied')) {
+                const isOptimal = optimalChoices.includes(i);
+                const isUserSelected = selectedUrinals.includes(i);
+
+                if (isOptimal) {
+                    button.classList.add('correct');
+                    button.classList.remove('chosen');
+                    checkBadge.classList.add('visible');
+                }
+                
+                if (isUserSelected && !isOptimal) {
+                     button.classList.add('incorrect');
+                     button.classList.remove('chosen');
+                     crossBadge.classList.add('visible');
+                }
+            }
+        }
+
+        if (shouldHaveWaited) {
+             SoundManager.playError();
+             gameMessage.innerHTML = `<span class="text-red-600">⚠</span> FALSE. Wait for a stall. Don't be weird.`;
+        } else if (isCorrect) {
+            SoundManager.playSuccess();
+            score++;
+            gameMessage.innerHTML = `<span class="text-green-700">✓</span> ${getRandomMsg(MSG_WIN)}`;
+        } else {
+            SoundManager.playError();
+            gameMessage.innerHTML = `<span class="text-red-600">⚠</span> ${getRandomMsg(MSG_LOSE)}`;
+        }
+
+        scoreDisplay.textContent = score;
+    }
+
+    function nextRound() {
+        SoundManager.init();
+        
+        if (currentRound < MAX_ROUNDS) {
+            currentRound++;
+            roundState = 'choosing';
+            selectedUrinals = [];
+            roundDisplay.textContent = currentRound;
+
+            actionButton.textContent = "SELECT A SPOT";
+            actionButton.classList.remove('bg-green-700', 'hover:bg-green-600');
+            actionButton.classList.add('bg-blue-900', 'hover:bg-blue-800');
+            actionButton.disabled = true; 
+
+            currentScenario = generateRandomScenario(currentRound);
+            renderBoard(currentScenario);
+            
+            waitButton.classList.add('hidden');
+            waitButton.classList.remove('fade-in');
+            clearTimeout(waitButtonTimeout);
+            
+            if (isWaitScenario(currentScenario)) {
+                waitButtonTimeout = setTimeout(() => {
+                    if (roundState === 'choosing') {
+                        waitButton.classList.remove('hidden');
+                        waitButton.classList.add('fade-in');
+                        SoundManager.playWaitAppear();
+                    }
+                }, 3000);
+            }
+
+            gameMessage.textContent = `Round ${currentRound}: Select ALL acceptable spots.`;
+
+        } else {
+            roundState = 'finished';
+            actionButton.textContent = "PLAY AGAIN";
+            actionButton.classList.remove('bg-green-700', 'hover:bg-green-600');
+            actionButton.classList.add('bg-blue-900', 'hover:bg-blue-800');
+            actionButton.disabled = false;
+
+            let finalMessage;
+            if (score === MAX_ROUNDS) {
+                SoundManager.playWin();
+                finalMessage = "Promotion to Assistant Regional Manager!";
+            } else if (score >= MAX_ROUNDS / 2) {
+                SoundManager.playWin(); 
+                finalMessage = "Acceptable work. Back to your desk.";
+            } else {
+                SoundManager.playLose();
+                finalMessage = "Transfer to the Annex. With Toby.";
+            }
+            gameMessage.innerHTML = `Game Over. Score: ${score}/${MAX_ROUNDS}. ${finalMessage}`;
+        }
+    }
+
+    function handleActionButton() {
+        SoundManager.playClick();
+        if (roundState === 'start' || roundState === 'finished') {
+            resetGame();
+            nextRound();
+        } else if (roundState === 'choosing') {
+            if (selectedUrinals.length > 0) checkAnswer();
+        } else if (roundState === 'checked') {
+            nextRound();
+        }
+    }
+
+    function resetGame() {
+        currentRound = 0;
+        score = 0;
+        selectedUrinals = [];
+        scoreDisplay.textContent = score;
+        actionButton.textContent = "START TRAINING";
+        actionButton.disabled = false;
+        
+        gameMessage.textContent = "Press START to begin training.";
+        roundDisplay.textContent = '0';
+        board.innerHTML = '';
+        renderBoard([]);
+        roundState = 'start';
+    }
+
+    // Initialize with Splash
+    window.onload = function() {
+        setTimeout(() => {
+            splashScreen.classList.add('splash-hidden');
+            gameContainer.classList.remove('hidden-start');
+            resetGame();
+        }, 4000); 
+    };
+
+</script>
+</body>
+</html>v
