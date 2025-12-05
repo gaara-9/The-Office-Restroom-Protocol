@@ -1,21 +1,26 @@
 {
   "name": "The Office: Restroom Protocol",
   "short_name": "UrinalGame",
+  "description": "Master the unwritten rules of the restroom in this humorous puzzle game. Choose the correct spot to maintain maximum social distance and avoid awkward encounters. Training provided by the assistant to the regional manager.",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#1e293b",
-  "theme_color": "#1e293b",
+  "background_color": "#111827",
+  "theme_color": "#111827",
   "orientation": "portrait",
+  "scope": "/",
+  "categories": ["games", "puzzle", "casual"],
   "icons": [
     {
       "src": "icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
